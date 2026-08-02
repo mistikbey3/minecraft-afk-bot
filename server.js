@@ -67,7 +67,7 @@ function createBot() {
 
     setTimeout(() => {
       if (bot) {
-        bot.chat(`/login ${CONFIG.password}`);
+        bot.chat(`/login salakmustafa ${CONFIG.password}`);
         console.log('[BOT] /login gönderildi.');
       }
     }, 4000);
