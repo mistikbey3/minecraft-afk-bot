@@ -11,7 +11,8 @@ const startTime = Date.now();
 let chatLogs = [];
 let botStatus = 'Başlatılıyor...';
 let bot = null;
-let isLoggedIn = false; // Çift login atılmasını önleyen kilit
+let isLoggedIn = false;
+let moveInterval = null;
 
 function addLog(msg) {
     const time = new Date().toLocaleTimeString('tr-TR');
@@ -19,7 +20,7 @@ function addLog(msg) {
     if (chatLogs.length > 50) chatLogs.shift();
 }
 
-// --- CANLI CHAT VE MESAJ GÖNDERMELİ WEB DASHBOARD ---
+// --- WEB DASHBOARD ---
 app.get('/', (req, res) => {
     const uptime = Math.floor((Date.now() - startTime) / 1000);
     res.send(`
@@ -56,15 +57,13 @@ app.get('/', (req, res) => {
                     <div class="chat-box" id="chatBox">
                         ${chatLogs.map(log => `<div class="log-entry">${log}</div>`).reverse().join('') || '<div class="log-entry">Henüz mesaj yok...</div>'}
                     </div>
-                    <!-- SİTEDEN OYUNA MESAJ / KOMUT GÖNDERME KUTUSU -->
                     <form action="/send" method="POST" class="input-group">
-                        <input type="text" id="msgInput" name="message" placeholder="Oyun içi mesaj veya komut yaz (Örn: /login salakmustafa veya Sa)" required autocomplete="off">
+                        <input type="text" id="msgInput" name="message" placeholder="Oyun içi mesaj veya komut yaz (Örn: /skyblock veya sa)" required autocomplete="off">
                         <button type="submit">Gönder</button>
                     </form>
                 </div>
             </div>
             <script>
-                // Yazı yazarken sayfanın otomatik yenilenip yazıyı silmesini engeller
                 let isTyping = false;
                 const inputElem = document.getElementById('msgInput');
                 inputElem.addEventListener('focus', () => isTyping = true);
@@ -79,7 +78,6 @@ app.get('/', (req, res) => {
     `);
 });
 
-// WEBDEN GÖNDERİLEN MESAJI OYUNA İLETME
 app.post('/send', (req, res) => {
     const msg = req.body.message;
     if (bot && msg) {
@@ -89,13 +87,8 @@ app.post('/send', (req, res) => {
     res.redirect('/');
 });
 
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok', botStatus, uptime: Math.floor((Date.now() - startTime) / 1000) });
-});
-
 app.listen(PORT, () => {
-    console.log(`[SYS] Web servisi port ${PORT} üzerinde aktif.`);
-    addLog('Web arayüzü başlatıldı.');
+    console.log(`[SYS] Web servisi ${PORT} portunda aktif.`);
 });
 
 // --- AFK BOT YAPILANDIRMASI ---
@@ -110,7 +103,7 @@ const BOT_CONFIG = {
 function createBot() {
     botStatus = 'Sunucuya Bağlanıyor...';
     isLoggedIn = false;
-    addLog('play.mc-block.com sunucusuna bağlanılıyor...');
+    if (moveInterval) clearInterval(moveInterval);
 
     bot = mineflayer.createBot({
         host: BOT_CONFIG.host,
@@ -120,21 +113,38 @@ function createBot() {
     });
 
     bot.on('login', () => {
-        botStatus = 'Bağlandı (Giriş Bekleniyor)';
+        botStatus = 'Bağlandı (Giriş Yapılıyor)';
         addLog('Sunucuya ağ bağlantısı sağlandı.');
     });
 
     bot.on('spawn', () => {
-        botStatus = 'OYUNDA (AFK)';
-        addLog(`${BOT_CONFIG.username} olarak dünyada doğdu!`);
+        botStatus = 'OYUNDA (AFK Koruma Aktif)';
+        addLog(`${BOT_CONFIG.username} doğdu!`);
         
-        // Çift login komutu atıp lobiden engel yememesi için kontrol
+        // 1. Giriş İşlemi
         if (!isLoggedIn) {
             isLoggedIn = true;
             setTimeout(() => {
                 bot.chat(`/login ${BOT_CONFIG.password}`);
                 addLog('Otomatik /login komutu gönderildi.');
-            }, 3000);
+
+                // 2. Lobiden Oyuna Geçiş (Örn: /skyblock)
+                setTimeout(() => {
+                    bot.chat('/skyblock'); // Hangi modda oynuyorsan burayı değiştirebilirsin
+                    addLog('Oyuna geçiş komutu gönderildi (/skyblock).');
+                }, 4000);
+
+            }, 2500);
+        }
+
+        // 3. Anti-AFK ve Anti-Bot Koruması (Her 8 saniyede bir zıplar/hareket eder)
+        if (!moveInterval) {
+            moveInterval = setInterval(() => {
+                if (bot && bot.entity) {
+                    bot.setControlState('jump', true);
+                    setTimeout(() => { if (bot) bot.setControlState('jump', false); }, 500);
+                }
+            }, 8000);
         }
     });
 
@@ -148,43 +158,30 @@ function createBot() {
     bot.on('kicked', (reason) => {
         botStatus = 'Sunucudan Atıldı';
         isLoggedIn = false;
-        addLog(`[UYARI] Sunucudan atıldı! Sebep: ${reason}`);
+        if (moveInterval) clearInterval(moveInterval);
+        addLog(`[UYARI] Sunucudan atıldı! Sebep: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`);
     });
 
     bot.on('error', (err) => {
         botStatus = 'Hata Oluştu';
         isLoggedIn = false;
+        if (moveInterval) clearInterval(moveInterval);
         addLog(`[HATA] ${err.message}`);
     });
 
     bot.on('end', (reason) => {
         botStatus = 'Bağlantı Koptu';
         isLoggedIn = false;
-        addLog(`Bağlantı koptu (${reason}). 20s sonra tekrar deneniyor...`);
-        setTimeout(createBot, 20000);
-    });
-}
-
-createBot();
-// Sunucudan atılma durumunda
-    bot.on('kicked', (reason) => {
-        botStatus = 'Sunucudan Atıldı';
-        isLoggedIn = false;
-        addLog(`[UYARI] Sunucudan atıldı! Sebep: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`);
-    });
-
-    // Bağlantı koptuğunda (35 saniye bekleme süresi eklendi)
-    bot.on('end', (reason) => {
-        botStatus = 'Bağlantı Koptu';
-        isLoggedIn = false;
-        addLog(`Bağlantı koptu (${reason}). Sunucudaki oturumun düşmesi için 35 sn bekleniyor...`);
+        if (moveInterval) clearInterval(moveInterval);
+        addLog(`Bağlantı koptu (${reason}). 30s sonra tekrar deneniyor...`);
         
-        // Eski bot nesnesini tamamen temizle
         if (bot) {
             bot.removeAllListeners();
             bot = null;
         }
 
-        // 35 saniye sonra temiz sıfırdan bağlan
-        setTimeout(createBot, 35000);
+        setTimeout(createBot, 30000);
     });
+}
+
+createBot();
