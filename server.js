@@ -9,7 +9,7 @@ process.on('unhandledRejection', (err) => console.error('[KRİTİK HATA] Unhandl
 
 // ================= CONFIGURATION =================
 const CONFIG = {
-  host: process.env.BOT_HOST || 'play.knightnw.com',
+  host: process.env.BOT_HOST || 'play.mc-block.com',
   port: parseInt(process.env.BOT_PORT) || 25565,
   username: process.env.BOT_USERNAME || 'mistikhanim',
   password: process.env.BOT_PASSWORD || 'salakmustafa',
