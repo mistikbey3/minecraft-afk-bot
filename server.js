@@ -166,3 +166,25 @@ function createBot() {
 }
 
 createBot();
+// Sunucudan atılma durumunda
+    bot.on('kicked', (reason) => {
+        botStatus = 'Sunucudan Atıldı';
+        isLoggedIn = false;
+        addLog(`[UYARI] Sunucudan atıldı! Sebep: ${typeof reason === 'object' ? JSON.stringify(reason) : reason}`);
+    });
+
+    // Bağlantı koptuğunda (35 saniye bekleme süresi eklendi)
+    bot.on('end', (reason) => {
+        botStatus = 'Bağlantı Koptu';
+        isLoggedIn = false;
+        addLog(`Bağlantı koptu (${reason}). Sunucudaki oturumun düşmesi için 35 sn bekleniyor...`);
+        
+        // Eski bot nesnesini tamamen temizle
+        if (bot) {
+            bot.removeAllListeners();
+            bot = null;
+        }
+
+        // 35 saniye sonra temiz sıfırdan bağlan
+        setTimeout(createBot, 35000);
+    });
